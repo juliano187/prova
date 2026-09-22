@@ -225,9 +225,38 @@
     border: 1px solid var(--line);
     background: var(--bg-2);
     display: none;
+    position: relative;
+    user-select: none;
+    touch-action: none;
   }
   .canvas-wrap.show { display: block; }
-  canvas { display: block; width: 100%; height: auto; touch-action: manipulation; }
+  canvas { display: block; width: 100%; height: auto; touch-action: none; }
+
+  .zoom-bar {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    z-index: 10;
+  }
+  .zoom-btn {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    color: var(--ink);
+    font-size: 18px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 4px 12px var(--shadow);
+  }
+  .zoom-btn:active { background: var(--panel-2); }
 
   .calib-hint {
     margin-top: 10px;
@@ -358,7 +387,7 @@
     <section class="screen" id="screen-gabarito">
       <div class="card">
         <h2>Gabarito oficial</h2>
-        <p class="muted">Envie a foto da folha com as respostas corretas marcadas. Depois toque em 3 pontos para calibrar a leitura.</p>
+        <p class="muted">Envie a foto da folha. Toque e segure na imagem para usar a lupa e calibrar com precisão.</p>
         <div class="filebar">
           <label>📷 Tirar foto
             <input type="file" accept="image/*" capture="environment" id="file-gabarito">
@@ -367,7 +396,14 @@
             <input type="file" accept="image/*" id="file-gabarito-lib">
           </label>
         </div>
-        <div class="canvas-wrap" id="wrap-gabarito"><canvas id="canvas-gabarito"></canvas></div>
+        <div class="canvas-wrap" id="wrap-gabarito">
+          <div class="zoom-bar">
+            <button type="button" class="zoom-btn" id="btn-zoom-in-gab">+</button>
+            <button type="button" class="zoom-btn" id="btn-zoom-out-gab">−</button>
+            <button type="button" class="zoom-btn" id="btn-zoom-reset-gab">⟲</button>
+          </div>
+          <canvas id="canvas-gabarito"></canvas>
+        </div>
         <div class="calib-hint" id="hint-gabarito"><span class="calib-dot"></span><span id="hint-gabarito-text"></span></div>
         <button class="btn secondary" id="btn-recalibrate-gabarito" style="display:none;">Recalibrar pontos</button>
       </div>
@@ -394,7 +430,14 @@
             <input type="file" accept="image/*" id="file-aluno-lib">
           </label>
         </div>
-        <div class="canvas-wrap" id="wrap-aluno"><canvas id="canvas-aluno"></canvas></div>
+        <div class="canvas-wrap" id="wrap-aluno">
+          <div class="zoom-bar">
+            <button type="button" class="zoom-btn" id="btn-zoom-in-aluno">+</button>
+            <button type="button" class="zoom-btn" id="btn-zoom-out-aluno">−</button>
+            <button type="button" class="zoom-btn" id="btn-zoom-reset-aluno">⟲</button>
+          </div>
+          <canvas id="canvas-aluno"></canvas>
+        </div>
         <div class="calib-hint" id="hint-aluno"><span class="calib-dot"></span><span id="hint-aluno-text"></span></div>
         <button class="btn secondary" id="btn-recalibrate-aluno" style="display:none;">Recalibrar pontos</button>
       </div>
@@ -445,7 +488,7 @@
   var state = {
     config: { nQ: 10, nOpt: 4, labels: ["A","B","C","D"] },
     gabarito: { answers: [], confidences: [], confirmed: false },
-    students: [] // {name, answers, confidences, correct, total}
+    students: []
   };
 
   function loadState(){
@@ -490,23 +533,35 @@
   }
 
   // ============================================================
-  // SCAN ENGINE — shared by gabarito and aluno photo flows
+  // SCAN ENGINE COM LUPA E ZOOM DE ALTA PRECISÃO
   // ============================================================
   var MAX_WORK_DIM = 1400;
   var MAX_DISPLAY_WIDTH = 560;
 
   function createScanner(opts){
-    // opts: canvasEl, hintEl, hintTextEl, recalBtn, onDetected(answers, confidences)
     var canvas = opts.canvasEl;
     var ctx = canvas.getContext('2d');
     var work = document.createElement('canvas');
     var workCtx = work.getContext('2d', { willReadFrequently: true });
 
     var img = null;
-    var dispScale = 1; // work px -> canvas css/internal px (canvas internal == display here)
-    var points = [];   // in work-canvas coordinate space
+    var dispScale = 1;
+    var points = [];
     var answers = [];
     var confidences = [];
+
+    // Zoom & Pan state
+    var zoom = 1;
+    var panX = 0;
+    var panY = 0;
+
+    // Magnifier / Lupa state
+    var activeTouch = false;
+    var touchPos = { x: 0, y: 0 }; // canvas relative
+    var magnifyRadius = 60; // Raio do círculo da lupa
+    var magnifyScale = 2.5; // Fator de ampliação da lupa
+    var initialPinchDist = null;
+    var initialZoom = 1;
 
     var stepTexts = function(nQ, lastLabel){
       return [
@@ -536,7 +591,9 @@
           points = [];
           answers = [];
           confidences = [];
+          zoom = 1; panX = 0; panY = 0;
           opts.recalBtn.style.display = 'none';
+
           var scale = Math.min(1, MAX_WORK_DIM / Math.max(image.naturalWidth, image.naturalHeight));
           work.width = Math.round(image.naturalWidth * scale);
           work.height = Math.round(image.naturalHeight * scale);
@@ -557,20 +614,27 @@
 
     function redraw(){
       if (!img) return;
+      ctx.save();
       ctx.clearRect(0,0,canvas.width, canvas.height);
+
+      // Render base com Zoom e Pan
+      ctx.translate(panX, panY);
+      ctx.scale(zoom, zoom);
       ctx.drawImage(work, 0, 0, canvas.width, canvas.height);
-      // calibration points
-      points.forEach(function(p, idx){
+
+      // Pontos marcados
+      points.forEach(function(p){
         var x = p.x * dispScale, y = p.y * dispScale;
         ctx.beginPath();
-        ctx.arc(x, y, 7, 0, Math.PI*2);
+        ctx.arc(x, y, 7 / zoom, 0, Math.PI*2);
         ctx.fillStyle = '#e7b74a';
         ctx.fill();
         ctx.strokeStyle = '#1c2a1f';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 2 / zoom;
         ctx.stroke();
       });
-      // bubble grid overlay once calibrated
+
+      // Grade
       if (points.length === 3){
         var grid = computeGrid();
         for (var q=0; q<state.config.nQ; q++){
@@ -579,44 +643,85 @@
             var x = c.x * dispScale, y = c.y * dispScale;
             var isMarked = answers[q] === o;
             ctx.beginPath();
-            ctx.arc(x, y, isMarked ? 9 : 6, 0, Math.PI*2);
+            ctx.arc(x, y, (isMarked ? 9 : 6) / zoom, 0, Math.PI*2);
             if (isMarked){
               ctx.fillStyle = confidences[q] ? '#7fc28c' : '#e7b74a';
               ctx.fill();
             } else {
               ctx.strokeStyle = 'rgba(255,255,255,0.55)';
-              ctx.lineWidth = 1.5;
+              ctx.lineWidth = 1.5 / zoom;
               ctx.stroke();
             }
           }
         }
       }
+      ctx.restore();
+
+      // Render da Lupa (Overlay) quando tocado
+      if (activeTouch && points.length < 3) {
+        drawMagnifier();
+      }
+    }
+
+    function drawMagnifier() {
+      ctx.save();
+      
+      // Centro da lupa deslocado acima do dedo para o usuário enxergar
+      var offsetY = 90;
+      var magX = touchPos.x;
+      var magY = touchPos.y - offsetY;
+      
+      // Limita a lupa dentro do canvas
+      if (magY - magnifyRadius < 10) magY = touchPos.y + offsetY;
+
+      // Desenha fundo da lupa
+      ctx.beginPath();
+      ctx.arc(magX, magY, magnifyRadius, 0, Math.PI * 2);
+      ctx.fillStyle = '#17251d';
+      ctx.fill();
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = '#e7b74a';
+      ctx.stroke();
+      ctx.clip();
+
+      // Calcula posição correspondente no canvas com Zoom
+      var sourceX = (touchPos.x - panX) / zoom;
+      var sourceY = (touchPos.y - panY) / zoom;
+
+      ctx.save();
+      ctx.translate(magX, magY);
+      ctx.scale(magnifyScale, magnifyScale);
+      ctx.translate(-sourceX, -sourceY);
+      
+      ctx.drawImage(work, 0, 0, canvas.width, canvas.height);
+
+      // Desenha os pontos já confirmados dentro da lupa
+      points.forEach(function(p){
+        var x = p.x * dispScale, y = p.y * dispScale;
+        ctx.beginPath();
+        ctx.arc(x, y, 6, 0, Math.PI*2);
+        ctx.fillStyle = '#e7b74a';
+        ctx.fill();
+      });
+      ctx.restore();
+
+      // Mira (Retículo central)
+      ctx.beginPath();
+      ctx.arc(magX, magY, 4, 0, Math.PI * 2);
+      ctx.fillStyle = '#ff3b30';
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(magX - 15, magY); ctx.lineTo(magX + 15, magY);
+      ctx.moveTo(magX, magY - 15); ctx.lineTo(magX, magY + 15);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      ctx.restore();
     }
 
     function computeGrid(){
-      var p1 = points[0], p2 = points[1], p3 = points[2];
-      var nOpt = state.config.nOpt, nQ = state.config.nQ;
-      var col = { x: (p2.x-p1.x)/(nOpt-1), y: (p2.y-p1.y)/(nOpt-1) };
-      var row = { x: (p3.x-p1.x)/(nQ-1),  y: (p3.y-p1.y)/(nQ-1) };
-      var grid = [];
-      for (var q=0; q<nQ; q++){
-        var rowArr = [];
-        for (var o=0; o<nOpt; o++){
-          rowArr.push({
-            x: p1.x + row.x*q + col.x*o,
-            y: p1.y + row.y*q + col.y*o
-          });
-        }
-        grid.push(rowArr);
-      }
-      return { grid: grid, col: col, row: row, forEachRow: null, 0: grid[0] }; // patched below
-    }
-    // simpler accessor
-    function computeGrid2(){
-      var g = computeGridRaw();
-      return g;
-    }
-    function computeGridRaw(){
       var p1 = points[0], p2 = points[1], p3 = points[2];
       var nOpt = state.config.nOpt, nQ = state.config.nQ;
       var col = { x: (p2.x-p1.x)/(nOpt-1), y: (p2.y-p1.y)/(nOpt-1) };
@@ -631,8 +736,6 @@
       }
       return grid;
     }
-    // override computeGrid to the simple version
-    computeGrid = function(){ return computeGridRaw(); };
 
     function sampleDarkness(cx, cy, radius){
       var x0 = Math.max(0, Math.round(cx-radius)), y0 = Math.max(0, Math.round(cy-radius));
@@ -685,32 +788,95 @@
       opts.onDetected(answers.slice(), confidences.slice());
     }
 
-    function handleTap(evt){
-      if (!img) return;
-      if (points.length >= 3) return;
-      var rect = canvas.getBoundingClientRect();
-      var cx = (evt.touches ? evt.touches[0].clientX : evt.clientX) - rect.left;
-      var cy = (evt.touches ? evt.touches[0].clientY : evt.clientY) - rect.top;
-      var scaleX = canvas.width / rect.width;
-      var scaleY = canvas.height / rect.height;
-      var wx = (cx*scaleX) / dispScale;
-      var wy = (cy*scaleY) / dispScale;
-      points.push({x: wx, y: wy});
+    function setZoom(newZoom) {
+      zoom = Math.min(Math.max(1, newZoom), 4);
+      if (zoom === 1) { panX = 0; panY = 0; }
       redraw();
-      setHint(points.length);
-      if (points.length === 3){
-        opts.recalBtn.style.display = 'block';
-        detect();
+    }
+
+    // --- Gestos Touch & Pointer ---
+    function getCanvasPos(e) {
+      var rect = canvas.getBoundingClientRect();
+      var clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      var clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      return {
+        x: (clientX - rect.left) * (canvas.width / rect.width),
+        y: (clientY - rect.top) * (canvas.height / rect.height)
+      };
+    }
+
+    function getTouchDist(e) {
+      return Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+    }
+
+    function handleStart(e) {
+      if (!img) return;
+      if (e.touches && e.touches.length === 2) {
+        initialPinchDist = getTouchDist(e);
+        initialZoom = zoom;
+        activeTouch = false;
+        redraw();
+        return;
+      }
+      if (points.length < 3) {
+        activeTouch = true;
+        touchPos = getCanvasPos(e);
+        redraw();
       }
     }
 
-    canvas.addEventListener('click', handleTap);
-    canvas.addEventListener('touchstart', function(e){ e.preventDefault(); handleTap(e); }, {passive:false});
+    function handleMove(e) {
+      if (!img) return;
+      if (e.touches && e.touches.length === 2 && initialPinchDist) {
+        var dist = getTouchDist(e);
+        setZoom(initialZoom * (dist / initialPinchDist));
+        return;
+      }
+      if (activeTouch) {
+        touchPos = getCanvasPos(e);
+        redraw();
+      }
+    }
+
+    function handleEnd(e) {
+      if (!img) return;
+      initialPinchDist = null;
+      if (activeTouch && points.length < 3) {
+        activeTouch = false;
+        var zoomedX = (touchPos.x - panX) / zoom;
+        var zoomedY = (touchPos.y - panY) / zoom;
+        var wx = zoomedX / dispScale;
+        var wy = zoomedY / dispScale;
+        
+        points.push({ x: wx, y: wy });
+        redraw();
+        setHint(points.length);
+
+        if (points.length === 3) {
+          opts.recalBtn.style.display = 'block';
+          detect();
+        }
+      }
+    }
+
+    canvas.addEventListener('touchstart', function(e){ e.preventDefault(); handleStart(e); }, {passive:false});
+    canvas.addEventListener('touchmove', function(e){ e.preventDefault(); handleMove(e); }, {passive:false});
+    canvas.addEventListener('touchend', function(e){ e.preventDefault(); handleEnd(e); }, {passive:false});
+
+    canvas.addEventListener('mousedown', handleStart);
+    canvas.addEventListener('mousemove', handleMove);
+    canvas.addEventListener('mouseup', handleEnd);
+
+    if (opts.zoomInBtn) opts.zoomInBtn.addEventListener('click', function(){ setZoom(zoom + 0.5); });
+    if (opts.zoomOutBtn) opts.zoomOutBtn.addEventListener('click', function(){ setZoom(zoom - 0.5); });
+    if (opts.zoomResetBtn) opts.zoomResetBtn.addEventListener('click', function(){ setZoom(1); });
 
     opts.recalBtn.addEventListener('click', function(){
-      points = [];
-      answers = [];
-      confidences = [];
+      points = []; answers = []; confidences = [];
+      zoom = 1; panX = 0; panY = 0;
       opts.recalBtn.style.display = 'none';
       redraw();
       setHint(0);
@@ -728,6 +894,7 @@
       isCalibrated: function(){ return points.length === 3; },
       reset: function(){
         img = null; points = []; answers = []; confidences = [];
+        zoom = 1; panX = 0; panY = 0;
         canvas.parentElement.classList.remove('show');
         opts.recalBtn.style.display = 'none';
         opts.hintEl.classList.remove('show');
@@ -735,9 +902,8 @@
     };
   }
 
-  // ---------- render Q/answer lists (shared markup builder) ----------
+  // ---------- render Q/answer lists ----------
   function renderAnswerList(container, answers, confidences, opts){
-    // opts: onChange(q,o), compareTo (optional array to color correct/incorrect), editable(bool)
     container.innerHTML = '';
     for (var q=0; q<state.config.nQ; q++){
       var row = document.createElement('div');
@@ -803,6 +969,9 @@
     hintEl: document.getElementById('hint-gabarito'),
     hintTextEl: document.getElementById('hint-gabarito-text'),
     recalBtn: document.getElementById('btn-recalibrate-gabarito'),
+    zoomInBtn: document.getElementById('btn-zoom-in-gab'),
+    zoomOutBtn: document.getElementById('btn-zoom-out-gab'),
+    zoomResetBtn: document.getElementById('btn-zoom-reset-gab'),
     onDetected: function(answers, confidences){
       state.gabarito.answers = answers;
       state.gabarito.confidences = confidences;
@@ -839,6 +1008,9 @@
     hintEl: document.getElementById('hint-aluno'),
     hintTextEl: document.getElementById('hint-aluno-text'),
     recalBtn: document.getElementById('btn-recalibrate-aluno'),
+    zoomInBtn: document.getElementById('btn-zoom-in-aluno'),
+    zoomOutBtn: document.getElementById('btn-zoom-out-aluno'),
+    zoomResetBtn: document.getElementById('btn-zoom-reset-aluno'),
     onDetected: function(answers, confidences){
       document.getElementById('card-aluno-result').style.display = 'block';
       renderAlunoResult(answers, confidences);
@@ -884,7 +1056,6 @@
     saveState();
     refreshTabLocks();
     toast('Aluno salvo: ' + name);
-    // reset for next student
     document.getElementById('aluno-nome').value = '';
     document.getElementById('card-aluno-result').style.display = 'none';
     alunoScanner.reset();
@@ -958,7 +1129,7 @@
       lines.push(row.join(','));
     });
     var csv = lines.join('\n');
-    doExport(csv);
+    fallbackDownload(csv);
   });
 
   function csvSafe(s){
@@ -966,17 +1137,6 @@
     return s;
   }
 
-  async function doExport(csv){
-    try {
-      var downloads = await claude.use('downloads');
-      if (!downloads){ fallbackDownload(csv); return; }
-      await downloads.save({ filename: 'resultados-gabarito.csv', data: csv });
-      toast('CSV exportado!');
-    } catch(e){
-      if (e && e.code === 'declined'){ return; }
-      fallbackDownload(csv);
-    }
-  }
   function fallbackDownload(csv){
     try {
       var blob = new Blob([csv], {type:'text/csv'});
@@ -1006,9 +1166,6 @@
   document.getElementById('cfg-questions').value = state.config.nQ;
   document.getElementById('cfg-options').value = state.config.nOpt;
   refreshTabLocks();
-  if (state.gabarito.confirmed && state.gabarito.answers.length){
-    // gabarito already set from a previous session: allow reviewing count
-  }
 })();
 </script>
 </body>
