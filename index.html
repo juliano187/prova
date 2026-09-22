@@ -1,0 +1,1015 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Corretor de Gabarito</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+
+    --bg: #17251d;
+    --bg-2: #0f1c15;
+    --panel: #1f3327;
+    --panel-2: #24392c;
+    --line: #3a5142;
+    --ink: #f2efe4;
+    --ink-dim: #aebbae;
+    --accent: #e7b74a;
+    --accent-ink: #1c2a1f;
+    --good: #7fc28c;
+    --good-bg: rgba(127,194,140,0.14);
+    --bad: #e2685c;
+    --bad-bg: rgba(226,104,92,0.14);
+    --warn: #e7b74a;
+    --shadow: rgba(0,0,0,0.35);
+    --radius: 14px;
+    color-scheme: dark;
+  }
+  html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: #efe9db;
+      --bg-2: #e6dfcd;
+      --panel: #fbf8f1;
+      --panel-2: #f2ecdd;
+      --line: #d8cfb8;
+      --ink: #26231a;
+      --ink-dim: #6b6455;
+      --accent: #b2791f;
+      --accent-ink: #fffaf0;
+      --good: #2f7a45;
+      --good-bg: rgba(47,122,69,0.10);
+      --bad: #b23a2e;
+      --bad-bg: rgba(178,58,46,0.10);
+      --warn: #b2791f;
+      --shadow: rgba(120,110,80,0.18);
+      color-scheme: light;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #17251d; --bg-2: #0f1c15; --panel: #1f3327; --panel-2: #24392c;
+    --line: #3a5142; --ink: #f2efe4; --ink-dim: #aebbae; --accent: #e7b74a;
+    --accent-ink: #1c2a1f; --good: #7fc28c; --good-bg: rgba(127,194,140,0.14);
+    --bad: #e2685c; --bad-bg: rgba(226,104,92,0.14); --warn: #e7b74a;
+    --shadow: rgba(0,0,0,0.35); color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    height: 100%;
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Consolas, monospace;
+    -webkit-tap-highlight-color: transparent;
+  }
+  h1, h2, h3, .display {
+    font-family: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+    letter-spacing: -0.01em;
+  }
+
+  .app {
+    max-width: 640px;
+    margin: 0 auto;
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+    background: linear-gradient(180deg, var(--bg-2), var(--bg) 220px);
+  }
+
+  header.top {
+    position: sticky;
+    top: env(safe-area-inset-top, 0px);
+    z-index: 5;
+    padding: 18px 20px 10px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--line);
+  }
+  header.top h1 {
+    margin: 0 0 2px;
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--ink);
+  }
+  header.top p {
+    margin: 0;
+    font-size: 12.5px;
+    color: var(--ink-dim);
+  }
+
+  nav.tabs {
+    display: flex;
+    gap: 6px;
+    padding: 10px 20px;
+    overflow-x: auto;
+    background: var(--bg);
+    border-bottom: 1px solid var(--line);
+    position: sticky;
+    top: calc(env(safe-area-inset-top, 0px) + 62px);
+    z-index: 4;
+  }
+  nav.tabs button {
+    flex: none;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    padding: 8px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: transparent;
+    color: var(--ink-dim);
+    cursor: pointer;
+  }
+  nav.tabs button.active {
+    background: var(--accent);
+    color: var(--accent-ink);
+    border-color: var(--accent);
+  }
+  nav.tabs button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  main {
+    flex: 1;
+    padding: 18px 20px 40px;
+  }
+  section.screen { display: none; }
+  section.screen.active { display: block; animation: fade .18s ease; }
+  @keyframes fade { from { opacity: 0; transform: translateY(4px);} to {opacity:1; transform:none;} }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 14px;
+    box-shadow: 0 6px 18px var(--shadow);
+  }
+  .card h2 {
+    margin: 0 0 4px;
+    font-size: 16px;
+  }
+  .muted { color: var(--ink-dim); font-size: 12.5px; line-height: 1.5; }
+
+  label.field {
+    display: block;
+    font-size: 11.5px;
+    text-transform: none;
+    color: var(--ink-dim);
+    margin: 12px 0 5px;
+  }
+  input[type=text], input[type=number] {
+    width: 100%;
+    font-family: inherit;
+    font-size: 15px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: var(--panel-2);
+    color: var(--ink);
+  }
+  input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  .row2 { display: flex; gap: 10px; }
+  .row2 > div { flex: 1; }
+
+  button.btn {
+    font-family: 'Space Grotesk', inherit;
+    font-weight: 600;
+    font-size: 14px;
+    padding: 12px 16px;
+    border-radius: 10px;
+    border: none;
+    cursor: pointer;
+    background: var(--accent);
+    color: var(--accent-ink);
+    width: 100%;
+    margin-top: 14px;
+  }
+  button.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  button.btn.secondary {
+    background: transparent;
+    color: var(--ink);
+    border: 1px solid var(--line);
+  }
+  button.btn.danger { background: var(--bad); color: #2a0e0b; }
+  button.btn.small { width: auto; padding: 8px 12px; font-size: 12.5px; margin-top: 0; }
+
+  .filebar { display: flex; gap: 8px; margin-top: 10px; }
+  .filebar label {
+    flex: 1;
+    text-align: center;
+    font-size: 12.5px;
+    font-weight: 600;
+    padding: 12px 8px;
+    border-radius: 10px;
+    border: 1px dashed var(--line);
+    color: var(--ink-dim);
+    cursor: pointer;
+  }
+  .filebar input[type=file] { display: none; }
+
+  .canvas-wrap {
+    margin-top: 12px;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    background: var(--bg-2);
+    display: none;
+  }
+  .canvas-wrap.show { display: block; }
+  canvas { display: block; width: 100%; height: auto; touch-action: manipulation; }
+
+  .calib-hint {
+    margin-top: 10px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: var(--panel-2);
+    font-size: 12.5px;
+    display: none;
+    gap: 8px;
+    align-items: center;
+  }
+  .calib-hint.show { display: flex; }
+  .calib-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent); flex: none;
+  }
+
+  .qrow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .qrow:last-child { border-bottom: none; }
+  .qnum {
+    font-size: 12.5px;
+    color: var(--ink-dim);
+    width: 34px;
+    flex: none;
+  }
+  .chips { display: flex; gap: 6px; flex: 1; flex-wrap: wrap; }
+  .chip {
+    font-family: 'Space Grotesk', inherit;
+    font-weight: 600;
+    font-size: 13px;
+    width: 32px; height: 32px;
+    border-radius: 8px;
+    border: 1px solid var(--line);
+    background: var(--panel-2);
+    color: var(--ink-dim);
+    cursor: pointer;
+  }
+  .chip.selected { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .qflag { font-size: 13px; flex: none; width: 16px; text-align: center; }
+  .qrow.ok .chip.selected { background: var(--good); border-color: var(--good); color: #0b1f0f; }
+  .qrow.bad .chip.selected { background: var(--bad); border-color: var(--bad); color: #2a0e0b; }
+
+  .score-hero {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin: 4px 0 2px;
+  }
+  .score-hero .big { font-size: 40px; font-weight: 700; font-family: 'Space Grotesk'; }
+  .score-hero .pct { font-size: 15px; color: var(--ink-dim); }
+
+  table.results {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  table.results th, table.results td {
+    text-align: left;
+    padding: 8px 6px;
+    border-bottom: 1px solid var(--line);
+  }
+  table.results th { color: var(--ink-dim); font-weight: 600; font-size: 11.5px; }
+  table.results td.score { font-family: 'Space Grotesk'; font-weight: 700; }
+
+  .bar-row { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 5px 0; }
+  .bar-row .qn { width: 28px; color: var(--ink-dim); flex: none; }
+  .bar-track { flex: 1; height: 8px; border-radius: 5px; background: var(--panel-2); overflow: hidden; }
+  .bar-fill { height: 100%; background: var(--good); }
+  .bar-pct { width: 38px; text-align: right; color: var(--ink-dim); flex: none; }
+
+  .empty { text-align: center; padding: 30px 10px; color: var(--ink-dim); font-size: 13px; }
+  .toast {
+    position: fixed;
+    left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+    transform: translateX(-50%);
+    background: var(--panel); border: 1px solid var(--line);
+    color: var(--ink); padding: 10px 16px; border-radius: 999px;
+    font-size: 12.5px; box-shadow: 0 8px 20px var(--shadow);
+    opacity: 0; pointer-events: none; transition: opacity .2s;
+    z-index: 50; max-width: 80%; text-align: center;
+  }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <header class="top">
+    <h1>Corretor de Gabarito</h1>
+    <p>Fotografe a folha de respostas e veja os acertos na hora.</p>
+  </header>
+
+  <nav class="tabs">
+    <button data-tab="config" class="active">1 · Configuração</button>
+    <button data-tab="gabarito">2 · Gabarito</button>
+    <button data-tab="aluno" id="tab-aluno" disabled>3 · Aluno</button>
+    <button data-tab="resultados" id="tab-resultados" disabled>4 · Resultados</button>
+  </nav>
+
+  <main>
+
+    <!-- SCREEN 1: CONFIG -->
+    <section class="screen active" id="screen-config">
+      <div class="card">
+        <h2>Estrutura da prova</h2>
+        <p class="muted">Defina quantas questões tem a folha e quantas alternativas cada questão possui (A, B, C, D...).</p>
+        <div class="row2">
+          <div>
+            <label class="field" for="cfg-questions">Nº de questões</label>
+            <input type="number" id="cfg-questions" min="1" max="60" value="10">
+          </div>
+          <div>
+            <label class="field" for="cfg-options">Nº de alternativas</label>
+            <input type="number" id="cfg-options" min="2" max="6" value="4">
+          </div>
+        </div>
+        <button class="btn" id="btn-save-config">Salvar e continuar</button>
+      </div>
+    </section>
+
+    <!-- SCREEN 2: GABARITO -->
+    <section class="screen" id="screen-gabarito">
+      <div class="card">
+        <h2>Gabarito oficial</h2>
+        <p class="muted">Envie a foto da folha com as respostas corretas marcadas. Depois toque em 3 pontos para calibrar a leitura.</p>
+        <div class="filebar">
+          <label>📷 Tirar foto
+            <input type="file" accept="image/*" capture="environment" id="file-gabarito">
+          </label>
+          <label>🖼️ Da galeria
+            <input type="file" accept="image/*" id="file-gabarito-lib">
+          </label>
+        </div>
+        <div class="canvas-wrap" id="wrap-gabarito"><canvas id="canvas-gabarito"></canvas></div>
+        <div class="calib-hint" id="hint-gabarito"><span class="calib-dot"></span><span id="hint-gabarito-text"></span></div>
+        <button class="btn secondary" id="btn-recalibrate-gabarito" style="display:none;">Recalibrar pontos</button>
+      </div>
+
+      <div class="card" id="card-gabarito-answers" style="display:none;">
+        <h2>Confira as respostas detectadas</h2>
+        <p class="muted">Toque na letra certa para corrigir qualquer questão. ⚠️ indica leitura pouco nítida.</p>
+        <div id="gabarito-list"></div>
+        <button class="btn" id="btn-confirm-gabarito">Confirmar gabarito</button>
+      </div>
+    </section>
+
+    <!-- SCREEN 3: ALUNO -->
+    <section class="screen" id="screen-aluno">
+      <div class="card">
+        <h2>Corrigir folha do aluno</h2>
+        <label class="field" for="aluno-nome">Nome do aluno</label>
+        <input type="text" id="aluno-nome" placeholder="Ex.: Allana">
+        <div class="filebar">
+          <label>📷 Tirar foto
+            <input type="file" accept="image/*" capture="environment" id="file-aluno">
+          </label>
+          <label>🖼️ Da galeria
+            <input type="file" accept="image/*" id="file-aluno-lib">
+          </label>
+        </div>
+        <div class="canvas-wrap" id="wrap-aluno"><canvas id="canvas-aluno"></canvas></div>
+        <div class="calib-hint" id="hint-aluno"><span class="calib-dot"></span><span id="hint-aluno-text"></span></div>
+        <button class="btn secondary" id="btn-recalibrate-aluno" style="display:none;">Recalibrar pontos</button>
+      </div>
+
+      <div class="card" id="card-aluno-result" style="display:none;">
+        <h2 id="aluno-result-title">Resultado</h2>
+        <div class="score-hero">
+          <span class="big" id="aluno-score-big">0/0</span>
+          <span class="pct" id="aluno-score-pct">0%</span>
+        </div>
+        <div id="aluno-list" style="margin-top:8px;"></div>
+        <button class="btn" id="btn-save-aluno">Salvar aluno e continuar</button>
+      </div>
+    </section>
+
+    <!-- SCREEN 4: RESULTADOS -->
+    <section class="screen" id="screen-resultados">
+      <div class="card" id="card-resultados-table">
+        <h2>Turma</h2>
+        <div id="resultados-empty" class="empty">Nenhum aluno corrigido ainda.</div>
+        <table class="results" id="resultados-table" style="display:none;">
+          <thead><tr><th>Aluno</th><th>Acertos</th><th>%</th></tr></thead>
+          <tbody id="resultados-tbody"></tbody>
+        </table>
+      </div>
+      <div class="card" id="card-resultados-questoes" style="display:none;">
+        <h2>Desempenho por questão</h2>
+        <p class="muted">Percentual de alunos que acertaram cada questão.</p>
+        <div id="resultados-questoes"></div>
+      </div>
+      <div class="card" id="card-resultados-actions" style="display:none;">
+        <button class="btn secondary" id="btn-export-csv">Exportar CSV</button>
+        <button class="btn danger" id="btn-reset-all">Limpar tudo</button>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---------- state ----------
+  var STORAGE_KEY = "corretor-gabarito-state-v1";
+  var state = {
+    config: { nQ: 10, nOpt: 4, labels: ["A","B","C","D"] },
+    gabarito: { answers: [], confidences: [], confirmed: false },
+    students: [] // {name, answers, confidences, correct, total}
+  };
+
+  function loadState(){
+    try {
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      var saved = JSON.parse(raw);
+      if (saved && saved.config) state = saved;
+    } catch(e) { /* ignore */ }
+  }
+  function saveState(){
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch(e) { /* ignore */ }
+  }
+
+  function toast(msg){
+    var t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toast._h);
+    toast._h = setTimeout(function(){ t.classList.remove('show'); }, 2200);
+  }
+
+  function optionLabel(i){ return state.config.labels[i] || String.fromCharCode(65+i); }
+
+  // ---------- tabs ----------
+  var tabButtons = document.querySelectorAll('nav.tabs button');
+  function showTab(name){
+    document.querySelectorAll('.screen').forEach(function(s){ s.classList.remove('active'); });
+    document.getElementById('screen-'+name).classList.add('active');
+    tabButtons.forEach(function(b){ b.classList.toggle('active', b.dataset.tab === name); });
+  }
+  tabButtons.forEach(function(b){
+    b.addEventListener('click', function(){
+      if (b.disabled) return;
+      showTab(b.dataset.tab);
+    });
+  });
+
+  function refreshTabLocks(){
+    document.getElementById('tab-aluno').disabled = !state.gabarito.confirmed;
+    document.getElementById('tab-resultados').disabled = state.students.length === 0;
+  }
+
+  // ============================================================
+  // SCAN ENGINE — shared by gabarito and aluno photo flows
+  // ============================================================
+  var MAX_WORK_DIM = 1400;
+  var MAX_DISPLAY_WIDTH = 560;
+
+  function createScanner(opts){
+    // opts: canvasEl, hintEl, hintTextEl, recalBtn, onDetected(answers, confidences)
+    var canvas = opts.canvasEl;
+    var ctx = canvas.getContext('2d');
+    var work = document.createElement('canvas');
+    var workCtx = work.getContext('2d', { willReadFrequently: true });
+
+    var img = null;
+    var dispScale = 1; // work px -> canvas css/internal px (canvas internal == display here)
+    var points = [];   // in work-canvas coordinate space
+    var answers = [];
+    var confidences = [];
+
+    var stepTexts = function(nQ, lastLabel){
+      return [
+        "Toque no centro do círculo A da Questão 1.",
+        "Toque no centro do círculo " + lastLabel + " da Questão 1 (última alternativa).",
+        "Toque no centro do círculo A da Questão " + nQ + " (última questão)."
+      ];
+    };
+
+    function setHint(i){
+      var texts = stepTexts(state.config.nQ, optionLabel(state.config.nOpt-1));
+      if (i < 3){
+        opts.hintEl.classList.add('show');
+        opts.hintTextEl.textContent = texts[i];
+      } else {
+        opts.hintEl.classList.remove('show');
+      }
+    }
+
+    function loadFromFile(file){
+      if (!file) return;
+      var reader = new FileReader();
+      reader.onload = function(e){
+        var image = new Image();
+        image.onload = function(){
+          img = image;
+          points = [];
+          answers = [];
+          confidences = [];
+          opts.recalBtn.style.display = 'none';
+          var scale = Math.min(1, MAX_WORK_DIM / Math.max(image.naturalWidth, image.naturalHeight));
+          work.width = Math.round(image.naturalWidth * scale);
+          work.height = Math.round(image.naturalHeight * scale);
+          workCtx.drawImage(image, 0, 0, work.width, work.height);
+
+          var dispWidth = Math.min(MAX_DISPLAY_WIDTH, work.width);
+          dispScale = dispWidth / work.width;
+          canvas.width = dispWidth;
+          canvas.height = Math.round(work.height * dispScale);
+          canvas.parentElement.classList.add('show');
+          redraw();
+          setHint(0);
+        };
+        image.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function redraw(){
+      if (!img) return;
+      ctx.clearRect(0,0,canvas.width, canvas.height);
+      ctx.drawImage(work, 0, 0, canvas.width, canvas.height);
+      // calibration points
+      points.forEach(function(p, idx){
+        var x = p.x * dispScale, y = p.y * dispScale;
+        ctx.beginPath();
+        ctx.arc(x, y, 7, 0, Math.PI*2);
+        ctx.fillStyle = '#e7b74a';
+        ctx.fill();
+        ctx.strokeStyle = '#1c2a1f';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      });
+      // bubble grid overlay once calibrated
+      if (points.length === 3){
+        var grid = computeGrid();
+        for (var q=0; q<state.config.nQ; q++){
+          for (var o=0; o<state.config.nOpt; o++){
+            var c = grid[q][o];
+            var x = c.x * dispScale, y = c.y * dispScale;
+            var isMarked = answers[q] === o;
+            ctx.beginPath();
+            ctx.arc(x, y, isMarked ? 9 : 6, 0, Math.PI*2);
+            if (isMarked){
+              ctx.fillStyle = confidences[q] ? '#7fc28c' : '#e7b74a';
+              ctx.fill();
+            } else {
+              ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+              ctx.lineWidth = 1.5;
+              ctx.stroke();
+            }
+          }
+        }
+      }
+    }
+
+    function computeGrid(){
+      var p1 = points[0], p2 = points[1], p3 = points[2];
+      var nOpt = state.config.nOpt, nQ = state.config.nQ;
+      var col = { x: (p2.x-p1.x)/(nOpt-1), y: (p2.y-p1.y)/(nOpt-1) };
+      var row = { x: (p3.x-p1.x)/(nQ-1),  y: (p3.y-p1.y)/(nQ-1) };
+      var grid = [];
+      for (var q=0; q<nQ; q++){
+        var rowArr = [];
+        for (var o=0; o<nOpt; o++){
+          rowArr.push({
+            x: p1.x + row.x*q + col.x*o,
+            y: p1.y + row.y*q + col.y*o
+          });
+        }
+        grid.push(rowArr);
+      }
+      return { grid: grid, col: col, row: row, forEachRow: null, 0: grid[0] }; // patched below
+    }
+    // simpler accessor
+    function computeGrid2(){
+      var g = computeGridRaw();
+      return g;
+    }
+    function computeGridRaw(){
+      var p1 = points[0], p2 = points[1], p3 = points[2];
+      var nOpt = state.config.nOpt, nQ = state.config.nQ;
+      var col = { x: (p2.x-p1.x)/(nOpt-1), y: (p2.y-p1.y)/(nOpt-1) };
+      var row = { x: (p3.x-p1.x)/(nQ-1),  y: (p3.y-p1.y)/(nQ-1) };
+      var grid = [];
+      for (var q=0; q<nQ; q++){
+        var rowArr = [];
+        for (var o=0; o<nOpt; o++){
+          rowArr.push({ x: p1.x + row.x*q + col.x*o, y: p1.y + row.y*q + col.y*o });
+        }
+        grid.push(rowArr);
+      }
+      return grid;
+    }
+    // override computeGrid to the simple version
+    computeGrid = function(){ return computeGridRaw(); };
+
+    function sampleDarkness(cx, cy, radius){
+      var x0 = Math.max(0, Math.round(cx-radius)), y0 = Math.max(0, Math.round(cy-radius));
+      var x1 = Math.min(work.width, Math.round(cx+radius)), y1 = Math.min(work.height, Math.round(cy+radius));
+      var w = x1-x0, h = y1-y0;
+      if (w <= 0 || h <= 0) return 0;
+      var data;
+      try { data = workCtx.getImageData(x0,y0,w,h).data; } catch(e){ return 0; }
+      var sum = 0, count = 0;
+      var r2 = radius*radius;
+      for (var y=0; y<h; y+=2){
+        for (var x=0; x<w; x+=2){
+          var dx = (x0+x)-cx, dy=(y0+y)-cy;
+          if (dx*dx+dy*dy > r2) continue;
+          var idx = (y*w+x)*4;
+          var gray = (data[idx]+data[idx+1]+data[idx+2])/3;
+          sum += (255-gray);
+          count++;
+        }
+      }
+      return count ? sum/count : 0;
+    }
+
+    function detect(){
+      var grid = computeGrid();
+      var col = { x: grid[0][1].x-grid[0][0].x, y: grid[0][1].y-grid[0][0].y };
+      var row = { x: grid[1][0].x-grid[0][0].x, y: grid[1][0].y-grid[0][0].y };
+      var colMag = Math.hypot(col.x, col.y);
+      var rowMag = Math.hypot(row.x, row.y);
+      var radius = 0.34 * Math.min(colMag, rowMag || colMag);
+      radius = Math.max(radius, 6);
+
+      answers = [];
+      confidences = [];
+      for (var q=0; q<state.config.nQ; q++){
+        var scores = [];
+        for (var o=0; o<state.config.nOpt; o++){
+          scores.push(sampleDarkness(grid[q][o].x, grid[q][o].y, radius));
+        }
+        var maxIdx = 0, maxVal = -1, secondVal = -1;
+        for (var i=0;i<scores.length;i++){
+          if (scores[i] > maxVal){ secondVal = maxVal; maxVal = scores[i]; maxIdx = i; }
+          else if (scores[i] > secondVal){ secondVal = scores[i]; }
+        }
+        answers.push(maxIdx);
+        var gap = maxVal - Math.max(secondVal, 0);
+        confidences.push(maxVal > 25 && gap > 12);
+      }
+      redraw();
+      opts.onDetected(answers.slice(), confidences.slice());
+    }
+
+    function handleTap(evt){
+      if (!img) return;
+      if (points.length >= 3) return;
+      var rect = canvas.getBoundingClientRect();
+      var cx = (evt.touches ? evt.touches[0].clientX : evt.clientX) - rect.left;
+      var cy = (evt.touches ? evt.touches[0].clientY : evt.clientY) - rect.top;
+      var scaleX = canvas.width / rect.width;
+      var scaleY = canvas.height / rect.height;
+      var wx = (cx*scaleX) / dispScale;
+      var wy = (cy*scaleY) / dispScale;
+      points.push({x: wx, y: wy});
+      redraw();
+      setHint(points.length);
+      if (points.length === 3){
+        opts.recalBtn.style.display = 'block';
+        detect();
+      }
+    }
+
+    canvas.addEventListener('click', handleTap);
+    canvas.addEventListener('touchstart', function(e){ e.preventDefault(); handleTap(e); }, {passive:false});
+
+    opts.recalBtn.addEventListener('click', function(){
+      points = [];
+      answers = [];
+      confidences = [];
+      opts.recalBtn.style.display = 'none';
+      redraw();
+      setHint(0);
+    });
+
+    return {
+      loadFromFile: loadFromFile,
+      getAnswers: function(){ return answers; },
+      getConfidences: function(){ return confidences; },
+      setAnswer: function(q, o){
+        answers[q] = o;
+        confidences[q] = true;
+        redraw();
+      },
+      isCalibrated: function(){ return points.length === 3; },
+      reset: function(){
+        img = null; points = []; answers = []; confidences = [];
+        canvas.parentElement.classList.remove('show');
+        opts.recalBtn.style.display = 'none';
+        opts.hintEl.classList.remove('show');
+      }
+    };
+  }
+
+  // ---------- render Q/answer lists (shared markup builder) ----------
+  function renderAnswerList(container, answers, confidences, opts){
+    // opts: onChange(q,o), compareTo (optional array to color correct/incorrect), editable(bool)
+    container.innerHTML = '';
+    for (var q=0; q<state.config.nQ; q++){
+      var row = document.createElement('div');
+      row.className = 'qrow';
+      var sel = answers[q];
+      if (opts.compareTo){
+        row.classList.add(sel === opts.compareTo[q] ? 'ok' : 'bad');
+      }
+      var num = document.createElement('span');
+      num.className = 'qnum';
+      num.textContent = 'Q' + (q+1);
+      row.appendChild(num);
+
+      var chips = document.createElement('div');
+      chips.className = 'chips';
+      (function(qq){
+        for (var o=0; o<state.config.nOpt; o++){
+          var chip = document.createElement('button');
+          chip.className = 'chip' + (answers[qq]===o ? ' selected' : '');
+          chip.textContent = optionLabel(o);
+          chip.addEventListener('click', (function(oo){
+            return function(){ opts.onChange(qq, oo); };
+          })(o));
+          chips.appendChild(chip);
+        }
+      })(q);
+      row.appendChild(chips);
+
+      var flag = document.createElement('span');
+      flag.className = 'qflag';
+      flag.textContent = (confidences && confidences[q] === false) ? '⚠️' : '';
+      row.appendChild(flag);
+
+      container.appendChild(row);
+    }
+  }
+
+  // ============================================================
+  // SCREEN 1: CONFIG
+  // ============================================================
+  document.getElementById('btn-save-config').addEventListener('click', function(){
+    var nQ = parseInt(document.getElementById('cfg-questions').value, 10);
+    var nOpt = parseInt(document.getElementById('cfg-options').value, 10);
+    if (!nQ || nQ < 1 || nQ > 60){ toast('Informe um número de questões válido.'); return; }
+    if (!nOpt || nOpt < 2 || nOpt > 6){ toast('Informe um número de alternativas entre 2 e 6.'); return; }
+    var labels = [];
+    for (var i=0;i<nOpt;i++) labels.push(String.fromCharCode(65+i));
+    state.config = { nQ: nQ, nOpt: nOpt, labels: labels };
+    state.gabarito = { answers: [], confidences: [], confirmed: false };
+    state.students = [];
+    saveState();
+    refreshTabLocks();
+    gabaritoScanner.reset();
+    document.getElementById('card-gabarito-answers').style.display = 'none';
+    showTab('gabarito');
+  });
+
+  // ============================================================
+  // SCREEN 2: GABARITO
+  // ============================================================
+  var gabaritoScanner = createScanner({
+    canvasEl: document.getElementById('canvas-gabarito'),
+    hintEl: document.getElementById('hint-gabarito'),
+    hintTextEl: document.getElementById('hint-gabarito-text'),
+    recalBtn: document.getElementById('btn-recalibrate-gabarito'),
+    onDetected: function(answers, confidences){
+      state.gabarito.answers = answers;
+      state.gabarito.confidences = confidences;
+      document.getElementById('card-gabarito-answers').style.display = 'block';
+      renderGabaritoList();
+    }
+  });
+  function renderGabaritoList(){
+    renderAnswerList(document.getElementById('gabarito-list'), state.gabarito.answers, state.gabarito.confidences, {
+      onChange: function(q,o){
+        state.gabarito.answers[q] = o;
+        state.gabarito.confidences[q] = true;
+        gabaritoScanner.setAnswer(q,o);
+        renderGabaritoList();
+      }
+    });
+  }
+  document.getElementById('file-gabarito').addEventListener('change', function(e){ gabaritoScanner.loadFromFile(e.target.files[0]); });
+  document.getElementById('file-gabarito-lib').addEventListener('change', function(e){ gabaritoScanner.loadFromFile(e.target.files[0]); });
+  document.getElementById('btn-confirm-gabarito').addEventListener('click', function(){
+    if (state.gabarito.answers.length !== state.config.nQ){ toast('Calibre e detecte o gabarito primeiro.'); return; }
+    state.gabarito.confirmed = true;
+    saveState();
+    refreshTabLocks();
+    toast('Gabarito confirmado!');
+    showTab('aluno');
+  });
+
+  // ============================================================
+  // SCREEN 3: ALUNO
+  // ============================================================
+  var alunoScanner = createScanner({
+    canvasEl: document.getElementById('canvas-aluno'),
+    hintEl: document.getElementById('hint-aluno'),
+    hintTextEl: document.getElementById('hint-aluno-text'),
+    recalBtn: document.getElementById('btn-recalibrate-aluno'),
+    onDetected: function(answers, confidences){
+      document.getElementById('card-aluno-result').style.display = 'block';
+      renderAlunoResult(answers, confidences);
+    }
+  });
+  function currentScore(answers){
+    var correct = 0;
+    for (var q=0;q<state.config.nQ;q++){
+      if (answers[q] === state.gabarito.answers[q]) correct++;
+    }
+    return correct;
+  }
+  function renderAlunoResult(answers, confidences){
+    var correct = currentScore(answers);
+    var total = state.config.nQ;
+    document.getElementById('aluno-score-big').textContent = correct + '/' + total;
+    document.getElementById('aluno-score-pct').textContent = Math.round(100*correct/total) + '%';
+    var name = document.getElementById('aluno-nome').value.trim();
+    document.getElementById('aluno-result-title').textContent = name ? 'Resultado — ' + name : 'Resultado';
+    renderAnswerList(document.getElementById('aluno-list'), answers, confidences, {
+      compareTo: state.gabarito.answers,
+      onChange: function(q,o){
+        alunoScanner.setAnswer(q,o);
+        renderAlunoResult(alunoScanner.getAnswers(), alunoScanner.getConfidences());
+      }
+    });
+  }
+  document.getElementById('file-aluno').addEventListener('change', function(e){ alunoScanner.loadFromFile(e.target.files[0]); });
+  document.getElementById('file-aluno-lib').addEventListener('change', function(e){ alunoScanner.loadFromFile(e.target.files[0]); });
+
+  document.getElementById('btn-save-aluno').addEventListener('click', function(){
+    var answers = alunoScanner.getAnswers();
+    if (answers.length !== state.config.nQ){ toast('Calibre e detecte a folha do aluno primeiro.'); return; }
+    var name = document.getElementById('aluno-nome').value.trim() || ('Aluno ' + (state.students.length+1));
+    var correct = currentScore(answers);
+    state.students.push({
+      name: name,
+      answers: answers.slice(),
+      confidences: alunoScanner.getConfidences().slice(),
+      correct: correct,
+      total: state.config.nQ
+    });
+    saveState();
+    refreshTabLocks();
+    toast('Aluno salvo: ' + name);
+    // reset for next student
+    document.getElementById('aluno-nome').value = '';
+    document.getElementById('card-aluno-result').style.display = 'none';
+    alunoScanner.reset();
+    document.getElementById('file-aluno').value = '';
+    document.getElementById('file-aluno-lib').value = '';
+  });
+
+  // ============================================================
+  // SCREEN 4: RESULTADOS
+  // ============================================================
+  function renderResultados(){
+    var empty = document.getElementById('resultados-empty');
+    var table = document.getElementById('resultados-table');
+    var tbody = document.getElementById('resultados-tbody');
+    var qCard = document.getElementById('card-resultados-questoes');
+    var actCard = document.getElementById('card-resultados-actions');
+
+    if (state.students.length === 0){
+      empty.style.display = 'block';
+      table.style.display = 'none';
+      qCard.style.display = 'none';
+      actCard.style.display = 'none';
+      return;
+    }
+    empty.style.display = 'none';
+    table.style.display = 'table';
+    qCard.style.display = 'block';
+    actCard.style.display = 'block';
+
+    tbody.innerHTML = '';
+    state.students.forEach(function(s){
+      var tr = document.createElement('tr');
+      var pct = Math.round(100*s.correct/s.total);
+      tr.innerHTML = '<td>'+escapeHtml(s.name)+'</td><td class="score">'+s.correct+'/'+s.total+'</td><td>'+pct+'%</td>';
+      tbody.appendChild(tr);
+    });
+
+    var qContainer = document.getElementById('resultados-questoes');
+    qContainer.innerHTML = '';
+    for (var q=0; q<state.config.nQ; q++){
+      var rightCount = 0;
+      state.students.forEach(function(s){ if (s.answers[q] === state.gabarito.answers[q]) rightCount++; });
+      var pct = Math.round(100*rightCount/state.students.length);
+      var row = document.createElement('div');
+      row.className = 'bar-row';
+      row.innerHTML = '<span class="qn">Q'+(q+1)+'</span>'+
+        '<span class="bar-track"><span class="bar-fill" style="width:'+pct+'%; background:'+(pct<50?'var(--bad)':'var(--good)')+';"></span></span>'+
+        '<span class="bar-pct">'+pct+'%</span>';
+      qContainer.appendChild(row);
+    }
+  }
+  function escapeHtml(s){
+    return s.replace(/[&<>"']/g, function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  }
+
+  document.querySelector('button[data-tab="resultados"]').addEventListener('click', renderResultados);
+
+  document.getElementById('btn-export-csv').addEventListener('click', function(){
+    var header = ['Aluno','Acertos','Total','Percentual'];
+    for (var q=0;q<state.config.nQ;q++) header.push('Q'+(q+1));
+    var lines = [header.join(',')];
+    var gabLine = ['GABARITO','','',''];
+    for (var q=0;q<state.config.nQ;q++) gabLine.push(optionLabel(state.gabarito.answers[q]));
+    lines.push(gabLine.join(','));
+    state.students.forEach(function(s){
+      var pct = Math.round(100*s.correct/s.total);
+      var row = [csvSafe(s.name), s.correct, s.total, pct+'%'];
+      s.answers.forEach(function(a){ row.push(optionLabel(a)); });
+      lines.push(row.join(','));
+    });
+    var csv = lines.join('\n');
+    doExport(csv);
+  });
+
+  function csvSafe(s){
+    if (/[",\n]/.test(s)) return '"' + s.replace(/"/g,'""') + '"';
+    return s;
+  }
+
+  async function doExport(csv){
+    try {
+      var downloads = await claude.use('downloads');
+      if (!downloads){ fallbackDownload(csv); return; }
+      await downloads.save({ filename: 'resultados-gabarito.csv', data: csv });
+      toast('CSV exportado!');
+    } catch(e){
+      if (e && e.code === 'declined'){ return; }
+      fallbackDownload(csv);
+    }
+  }
+  function fallbackDownload(csv){
+    try {
+      var blob = new Blob([csv], {type:'text/csv'});
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'resultados-gabarito.csv';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch(e){ toast('Não foi possível exportar o arquivo.'); }
+  }
+
+  document.getElementById('btn-reset-all').addEventListener('click', function(){
+    if (!confirm('Isso vai apagar o gabarito e todos os alunos salvos. Continuar?')) return;
+    state.students = [];
+    state.gabarito = { answers: [], confidences: [], confirmed: false };
+    saveState();
+    refreshTabLocks();
+    gabaritoScanner.reset();
+    document.getElementById('card-gabarito-answers').style.display = 'none';
+    renderResultados();
+    showTab('config');
+  });
+
+  // ---------- init ----------
+  loadState();
+  document.getElementById('cfg-questions').value = state.config.nQ;
+  document.getElementById('cfg-options').value = state.config.nOpt;
+  refreshTabLocks();
+  if (state.gabarito.confirmed && state.gabarito.answers.length){
+    // gabarito already set from a previous session: allow reviewing count
+  }
+})();
+</script>
+</body>
+</html>
